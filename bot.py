@@ -75,7 +75,7 @@ def generate(question):
     print(query)
     return requests.post("http://localhost:8000/query", json={"sql": query}).json()
 
-API_TOKEN = '8789849707:AAFzZjM6faWTdGCjWehTiJB6Q3mj7n6r6Ss'
+API_TOKEN = ''
 bot = telebot.TeleBot(API_TOKEN)
 
 @bot.message_handler(func=lambda message: True)

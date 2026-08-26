@@ -1,0 +1,10 @@
+# Necessarias para db.py, api.py, avaliacao.py e otimizar.py
+fastapi==0.141.1
+uvicorn==0.52.4
+dspy==3.3.1
+
+# Necessarias so para rodar o bot.py de verdade (bot do Telegram + transcricao de voz).
+# Descomente e instale quando for testar o bot completo.
+# whisper e pesado (puxa PyTorch) e precisa de ffmpeg instalado no sistema.
+# pyTelegramBotAPI
+# openai-whisper

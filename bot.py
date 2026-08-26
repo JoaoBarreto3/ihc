@@ -1,42 +1,10 @@
 import sqlite3
 import dspy
-import os
-import telebot #pip install pytelegrambotapi
-import whisper #pip install -U openai-whisper
-### whisper requires ffmpeg: on windows: choco install ffmpeg
 import json
-import requests
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, "lojas.db")
-
-def create_db():
-  conn = sqlite3.connect(db_path)
-  c = conn.cursor()
-
-  # Create tables
-  c.execute("""CREATE TABLE IF NOT EXISTS produtos (
-                nome TEXT, 
-                departamento TEXT
-            )""")
-
-  c.executemany("INSERT INTO produtos VALUES (?, ?)", [
-    ("sabonete", "higiene"),
-    ("agua", "bebidas"),
-    ("coca", "bebidas"),
-  ])
-
-  conn.commit()
-  conn.close()
-
-create_db()
-
-conn = sqlite3.connect(db_path)
-results = conn.execute("SELECT * from produtos").fetchall()
-print(results)
-
-lm = dspy.LM('openai/gemma-4-E2B-it-IQ4_XS', api_base='http://localhost:1337/v1', api_key='not-needed')
-dspy.configure(lm=lm)
+import os
+import db
+### telebot: pip install pytelegrambotapi
+### whisper: pip install -U openai-whisper (requires ffmpeg)
 
 class TextToSQL(dspy.Signature):
     """Generate SQL from natural language.
@@ -49,51 +17,42 @@ class TextToSQL(dspy.Signature):
 
     sql_query = dspy.OutputField(desc="Valid SQL query")
 
+def apenas_select(action_code, arg1, arg2, db_name, trigger_name):
+    if action_code in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
+
+
 class ReliableSQLGenerator(dspy.Module):
     def __init__(self):
         super().__init__()
         self.generate_sql = dspy.ChainOfThought(TextToSQL)
 
-    def forward(self, schema, question):
+    def forward(self, question):
+        schema = db.get_schema_ddl()
         pred = self.generate_sql(dbschema=schema, question=question)
+        query = pred.sql_query.strip().replace("```sql", "").replace("```", "").strip()
+        pred.sql_query = query
+        pred.erro = None
+
+        try:
+            conn = sqlite3.connect(":memory:")
+            conn.executescript(db.get_schema_ddl())
+            conn.set_authorizer(apenas_select)
+            conn.execute(query)
+            conn.close()
+        except sqlite3.Error as e:
+            pred.erro = str(e)
+
         return pred
-    
 
-question = "qual o departamento do sabonete?"
 
-SCHEMA = """
-CREATE TABLE produtos (
-  nome VARCHAR(50),
-  departamento VARCHAR(50)
-);
-"""
+def generate(generator, question):
+    sql = generator(question)
+    print(sql.sql_query)
+    # TODO: executar sql.sql_query contra o banco real (nao especificado pelo professor ainda)
+    return {"sql_query": sql.sql_query, "erro": sql.erro}
 
-def generate(question):
-    generator = ReliableSQLGenerator()
-    sql = generator.forward(SCHEMA, question)
-    query = sql.sql_query.strip().replace("```sql", "").replace("```", "").strip()
-    print(query)
-    return requests.post("http://localhost:8000/query", json={"sql": query}).json()
-
-API_TOKEN = ''
-bot = telebot.TeleBot(API_TOKEN)
-
-@bot.message_handler(func=lambda message: True)
-def reply_hi(message):
-  result = generate(message.text)
-  bot.reply_to(message, json.dumps(result))
-
-@bot.message_handler(content_types=['voice'])
-def transcribe_voice_message(message):
-    file_id = message.voice.file_id
-    # Get url to audio file.
-    file_path = bot.get_file_url(file_id)
-
-    # Transcribe the audio using Whisper AI
-    text = whisper_transcribe(file_path)
-
-    result = generate(text)
-    bot.reply_to(message, json.dumps(result))
 
 def whisper_transcribe(filepath: str, model="tiny") -> str:
     """
@@ -105,10 +64,46 @@ def whisper_transcribe(filepath: str, model="tiny") -> str:
     slower speed.
     :return: transcribed audio.
     """
+    import whisper
     # Choose tiny model for faster output.
     model = whisper.load_model(model)
     result = model.transcribe(filepath)
 
     return result["text"]
 
-bot.polling()
+
+def main():
+    import telebot
+
+    lm = dspy.LM('openai/gemma-4-E2B-it-IQ4_XS', api_base='http://localhost:1337/v1', api_key='not-needed')
+    dspy.configure(lm=lm)
+
+    generator = ReliableSQLGenerator()
+
+    API_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not API_TOKEN:
+        raise RuntimeError("Defina a variavel de ambiente TELEGRAM_BOT_TOKEN antes de rodar o bot.")
+    bot = telebot.TeleBot(API_TOKEN)
+
+    @bot.message_handler(func=lambda message: True)
+    def reply_hi(message):
+        result = generate(generator, message.text)
+        bot.reply_to(message, json.dumps(result))
+
+    @bot.message_handler(content_types=['voice'])
+    def transcribe_voice_message(message):
+        file_id = message.voice.file_id
+        # Get url to audio file.
+        file_path = bot.get_file_url(file_id)
+
+        # Transcribe the audio using Whisper AI
+        text = whisper_transcribe(file_path)
+
+        result = generate(generator, text)
+        bot.reply_to(message, json.dumps(result))
+
+    bot.polling()
+
+
+if __name__ == "__main__":
+    main()

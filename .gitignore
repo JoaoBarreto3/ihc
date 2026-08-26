@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+*.pyc
+lojas.db
+generator_otimizado.json

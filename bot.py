@@ -1,21 +1,20 @@
 import sqlite3
 import dspy
-import json
 import os
 import db
 ### telebot: pip install pytelegrambotapi
 ### whisper: pip install -U openai-whisper (requires ffmpeg)
 
-class TextToSQL(dspy.Signature):
-    """Generate SQL from natural language.
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lojas.db")
 
-        Database schema:
-          - produtos: nome, departamento
-    """
+
+class TextToSQL(dspy.Signature):
+    """Generate SQL from natural language."""
     dbschema = dspy.InputField(desc="Databases schema")
     question = dspy.InputField(desc="Natural language question")
 
     sql_query = dspy.OutputField(desc="Valid SQL query")
+
 
 def apenas_select(action_code, arg1, arg2, db_name, trigger_name):
     if action_code in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
@@ -47,11 +46,54 @@ class ReliableSQLGenerator(dspy.Module):
         return pred
 
 
+def executar(query):
+    """Roda a query contra o banco real, em modo somente leitura."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.set_authorizer(apenas_select)
+        cursor = conn.execute(query)
+        colunas = [d[0] for d in cursor.description] if cursor.description else []
+        linhas = cursor.fetchall()
+        return colunas, linhas
+    finally:
+        conn.close()
+
+
 def generate(generator, question):
     sql = generator(question)
     print(sql.sql_query)
-    # TODO: executar sql.sql_query contra o banco real (nao especificado pelo professor ainda)
-    return {"sql_query": sql.sql_query, "erro": sql.erro}
+
+    if sql.erro:
+        return {"sql_query": sql.sql_query, "erro": sql.erro, "colunas": [], "linhas": []}
+
+    try:
+        colunas, linhas = executar(sql.sql_query)
+    except sqlite3.Error as e:
+        return {"sql_query": sql.sql_query, "erro": str(e), "colunas": [], "linhas": []}
+
+    return {"sql_query": sql.sql_query, "erro": None, "colunas": colunas, "linhas": linhas}
+
+
+def formatar(result):
+    """Transforma o resultado num texto legivel para o usuario do Telegram."""
+    if result["erro"]:
+        return f"Nao consegui responder: {result['erro']}"
+
+    linhas = result["linhas"]
+    if not linhas:
+        return "Nao encontrei nenhum resultado para essa pergunta."
+
+    partes = []
+    for linha in linhas[:20]:
+        if len(linha) == 1:
+            partes.append(str(linha[0]))
+        else:
+            partes.append(" | ".join(str(campo) for campo in linha))
+
+    texto = "\n".join(partes)
+    if len(linhas) > 20:
+        texto += f"\n\n(mostrando 20 de {len(linhas)} resultados)"
+    return texto
 
 
 def whisper_transcribe(filepath: str, model="tiny") -> str:
@@ -80,15 +122,20 @@ def main():
 
     generator = ReliableSQLGenerator()
 
-    API_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    API_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not API_TOKEN:
         raise RuntimeError("Defina a variavel de ambiente TELEGRAM_BOT_TOKEN antes de rodar o bot.")
     bot = telebot.TeleBot(API_TOKEN)
 
-    @bot.message_handler(func=lambda message: True)
-    def reply_hi(message):
-        result = generate(generator, message.text)
-        bot.reply_to(message, json.dumps(result))
+    @bot.message_handler(commands=['start', 'help'])
+    def ajuda(message):
+        bot.reply_to(
+            message,
+            "Oi! Faca uma pergunta sobre a base de lojas e eu consulto pra voce.\n\n"
+            "Exemplos:\n"
+            "- Em qual departamento fica o sabonete?\n"
+            "- Quais produtos existem no departamento de bebidas?"
+        )
 
     @bot.message_handler(content_types=['voice'])
     def transcribe_voice_message(message):
@@ -100,7 +147,12 @@ def main():
         text = whisper_transcribe(file_path)
 
         result = generate(generator, text)
-        bot.reply_to(message, json.dumps(result))
+        bot.reply_to(message, formatar(result))
+
+    @bot.message_handler(func=lambda message: True)
+    def responder(message):
+        result = generate(generator, message.text)
+        bot.reply_to(message, formatar(result))
 
     bot.polling()
 

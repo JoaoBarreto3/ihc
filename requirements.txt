@@ -3,8 +3,8 @@ fastapi==0.141.1
 uvicorn==0.52.4
 dspy==3.3.1
 
-# Necessarias so para rodar o bot.py de verdade (bot do Telegram + transcricao de voz).
-# Descomente e instale quando for testar o bot completo.
-# whisper e pesado (puxa PyTorch) e precisa de ffmpeg instalado no sistema.
-# pyTelegramBotAPI
-# openai-whisper
+# Necessarias para rodar o bot.py completo (bot do Telegram + transcricao de voz).
+# openai-whisper e pesado (puxa PyTorch) e tambem precisa do ffmpeg instalado
+# no sistema (nao e um pacote Python, instale via apt/brew/choco).
+pyTelegramBotAPI==4.36.1
+openai-whisper==20250625

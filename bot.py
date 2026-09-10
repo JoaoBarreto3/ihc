@@ -1,11 +1,14 @@
-import sqlite3
-import dspy
 import os
-import db
+import sqlite3
+
+import dspy
+import requests
+
 ### telebot: pip install pytelegrambotapi
 ### whisper: pip install -U openai-whisper (requires ffmpeg)
+### requests: pip install requests
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lojas.db")
+SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:8000").rstrip("/")
 
 
 class TextToSQL(dspy.Signature):
@@ -17,9 +20,17 @@ class TextToSQL(dspy.Signature):
 
 
 def apenas_select(action_code, arg1, arg2, db_name, trigger_name):
+    """Autorizador do sqlite3 usado so para validar localmente a SQL gerada, sem tocar no banco real."""
     if action_code in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
+
+
+def obter_schema():
+    """Busca o DDL do banco no server.py via HTTP."""
+    resp = requests.get(f"{SERVER_URL}/schema", timeout=10)
+    resp.raise_for_status()
+    return resp.json()["ddl"]
 
 
 class ReliableSQLGenerator(dspy.Module):
@@ -28,7 +39,7 @@ class ReliableSQLGenerator(dspy.Module):
         self.generate_sql = dspy.ChainOfThought(TextToSQL)
 
     def forward(self, question):
-        schema = db.get_schema_ddl()
+        schema = obter_schema()
         pred = self.generate_sql(dbschema=schema, question=question)
         query = pred.sql_query.strip().replace("```sql", "").replace("```", "").strip()
         pred.sql_query = query
@@ -36,7 +47,7 @@ class ReliableSQLGenerator(dspy.Module):
 
         try:
             conn = sqlite3.connect(":memory:")
-            conn.executescript(db.get_schema_ddl())
+            conn.executescript(schema)
             conn.set_authorizer(apenas_select)
             conn.execute(query)
             conn.close()
@@ -47,16 +58,13 @@ class ReliableSQLGenerator(dspy.Module):
 
 
 def executar(query):
-    """Roda a query contra o banco real, em modo somente leitura."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.set_authorizer(apenas_select)
-        cursor = conn.execute(query)
-        colunas = [d[0] for d in cursor.description] if cursor.description else []
-        linhas = cursor.fetchall()
-        return colunas, linhas
-    finally:
-        conn.close()
+    """Roda a query contra o server.py via HTTP, que a executa em modo somente leitura."""
+    resp = requests.get(f"{SERVER_URL}/consulta", params={"sql": query}, timeout=10)
+    resp.raise_for_status()
+    dados = resp.json()
+    if dados["erro"]:
+        raise sqlite3.Error(dados["erro"])
+    return dados["colunas"], dados["linhas"]
 
 
 def generate(generator, question):
@@ -68,7 +76,7 @@ def generate(generator, question):
 
     try:
         colunas, linhas = executar(sql.sql_query)
-    except sqlite3.Error as e:
+    except (sqlite3.Error, requests.RequestException) as e:
         return {"sql_query": sql.sql_query, "erro": str(e), "colunas": [], "linhas": []}
 
     return {"sql_query": sql.sql_query, "erro": None, "colunas": colunas, "linhas": linhas}

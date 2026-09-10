@@ -1,7 +1,10 @@
-# Necessarias para db.py, api.py, avaliacao.py e otimizar.py
+# Necessarias para server.py (banco sqlite + web service FastAPI)
 fastapi==0.141.1
 uvicorn==0.52.4
+
+# Necessarias para bot.py (conversao NL -> SQL e chamadas HTTP ao server.py)
 dspy==3.3.1
+requests==2.32.5
 
 # Necessarias para rodar o bot.py completo (bot do Telegram + transcricao de voz).
 # openai-whisper e pesado (puxa PyTorch) e tambem precisa do ffmpeg instalado

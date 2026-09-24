@@ -7,21 +7,51 @@ from pydantic import BaseModel
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "lojas.db")
-SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
+
+SCHEMA_SQL = """
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS departamentos (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS produtos (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE,
+    departamento_id INTEGER NOT NULL REFERENCES departamentos(id),
+    preco REAL NOT NULL CHECK (preco >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS estoque (
+    id INTEGER PRIMARY KEY,
+    produto_id INTEGER NOT NULL REFERENCES produtos(id),
+    lote TEXT NOT NULL,
+    quantidade INTEGER NOT NULL CHECK (quantidade >= 0),
+    data_fabricacao TEXT NOT NULL,
+    data_validade TEXT NOT NULL,
+    UNIQUE (produto_id, lote)
+);
+"""
 
 # -----------------------------------------Banco de dados-----------------------------------------
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        schema_sql = f.read()
-    conn.executescript(schema_sql)
+    conn.executescript(SCHEMA_SQL)
     conn.commit()
     conn.close()
 
 
 def seed_db():
     conn = sqlite3.connect(DB_PATH)
+
+    # So insere os dados de exemplo se o banco ainda estiver vazio
+    ja_tem_dados = conn.execute("SELECT COUNT(*) FROM departamentos").fetchone()[0] > 0
+    if ja_tem_dados:
+        conn.close()
+        return
+
     conn.executemany(
         "INSERT INTO departamentos (nome) VALUES (?)",
         [("higiene",), ("bebidas",), ("alimentos",)]
@@ -51,6 +81,10 @@ def seed_db():
 
     conn.commit()
     conn.close()
+
+
+def get_schema_ddl():
+    return SCHEMA_SQL
 
 
 def listar_departamentos():
@@ -131,11 +165,6 @@ def listar_vencidos(data_ref=None):
     if data_ref is None:
         data_ref = datetime.date.today().isoformat()
     return listar_estoque(vence_ate=data_ref)
-
-
-def get_schema_ddl():
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 def apenas_select(action_code, arg1, arg2, db_name, trigger_name):

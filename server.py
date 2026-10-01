@@ -231,7 +231,7 @@ def health():
     return {"status": "ok", "tabelas": len(get_schema_ddl().split("CREATE TABLE")) - 1}
 
 
-@app.get("/schema", response_class=None)
+@app.get("/schema")
 def get_schema():
     return {"ddl": get_schema_ddl()}
 

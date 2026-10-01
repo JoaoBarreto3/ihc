@@ -309,7 +309,7 @@ def main():
         result = generate(generator, message.text)
         bot.reply_to(message, formatar(result))
 
-    bot.polling()
+    bot.infinity_polling(timeout=30, long_polling_timeout=20)
 
 
 # Modos de uso:

@@ -2,4 +2,4 @@
 __pycache__/
 *.pyc
 lojas.db
-generator_otimizado.json
+gepa_logs_*/

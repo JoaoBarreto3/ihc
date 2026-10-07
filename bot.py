@@ -362,10 +362,11 @@ class BotTelegram:
         def voz(message):
             try:
                 arquivo = bot.get_file(message.voice.file_id)
-                with tempfile.NamedTemporaryFile(suffix=".ogg") as tmp:
-                    tmp.write(bot.download_file(arquivo.file_path))
-                    tmp.flush()
-                    pergunta = self.transcrever(tmp.name)
+                with tempfile.TemporaryDirectory() as pasta:
+                    caminho = os.path.join(pasta, "audio.ogg")
+                    with open(caminho, "wb") as f:
+                        f.write(bot.download_file(arquivo.file_path))
+                    pergunta = self.transcrever(caminho)
             except Exception as e:
                 bot.reply_to(message, f"Nao consegui entender o audio: {e}")
                 return

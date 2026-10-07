@@ -1,0 +1,50 @@
+{
+  "nome": "avaliacao_cot_base",
+  "acertos": 6,
+  "total": 6,
+  "taxa": 1.0,
+  "detalhes": [
+    {
+      "pergunta": "qual a quantidade total de itens em estoque?",
+      "sql_gerada": "SELECT sum(quantidade) FROM estoque",
+      "sql_esperada": "SELECT SUM(quantidade) FROM estoque",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    },
+    {
+      "pergunta": "quais lotes vencem nos proximos 30 dias?",
+      "sql_gerada": "SELECT lote FROM estoque WHERE data_validade BETWEEN date('now') AND date('now', '+30 days')",
+      "sql_esperada": "SELECT lote FROM estoque WHERE data_validade BETWEEN date('now') AND date('now', '+30 days')",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    },
+    {
+      "pergunta": "em qual departamento fica o shampoo?",
+      "sql_gerada": "SELECT T1.nome FROM departamentos AS T1 INNER JOIN produtos AS T2 ON T1.id = T2.departamento_id WHERE T2.nome = 'shampoo'",
+      "sql_esperada": "SELECT d.nome FROM produtos p JOIN departamentos d ON p.departamento_id = d.id WHERE p.nome = 'shampoo'",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    },
+    {
+      "pergunta": "qual o preco do sabonete?",
+      "sql_gerada": "SELECT T1.preco FROM produtos AS T1 WHERE T1.nome = 'sabonete'",
+      "sql_esperada": "SELECT preco FROM produtos WHERE nome = 'sabonete'",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    },
+    {
+      "pergunta": "quais produtos tem algum lote vencido?",
+      "sql_gerada": "SELECT T1.nome\nFROM produtos AS T1\nINNER JOIN estoque AS T2\n  ON T1.id = T2.produto_id\nWHERE\n  T2.data_validade < date('now')",
+      "sql_esperada": "SELECT DISTINCT p.nome FROM estoque e JOIN produtos p ON e.produto_id = p.id JOIN departamentos d ON p.departamento_id = d.id WHERE e.data_validade < date('now')",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    },
+    {
+      "pergunta": "qual a data de validade do lote L003?",
+      "sql_gerada": "SELECT data_validade FROM estoque WHERE lote = 'L003'",
+      "sql_esperada": "SELECT data_validade FROM estoque WHERE lote = 'L003'",
+      "acertou": true,
+      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+    }
+  ]
+}

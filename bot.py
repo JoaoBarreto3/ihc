@@ -322,7 +322,7 @@ def otimizar(modo=MODO_PADRAO):
 
 
 class BotTelegram:
-    def __init__(self, agente, token, modelo_whisper="tiny"):
+    def __init__(self, agente, token, modelo_whisper="base"):
         import telebot
 
         self.agente = agente
@@ -335,7 +335,12 @@ class BotTelegram:
         if self._whisper is None:
             import whisper
             self._whisper = whisper.load_model(self.nome_modelo_whisper)
-        return self._whisper.transcribe(caminho_audio)["text"]
+        dica = ("Perguntas sobre a loja: sabonete, shampoo, pasta de dente, agua, coca, "
+                "suco de laranja, cerveja, arroz, feijao, macarrao, detergente, agua sanitaria, "
+                "leite, queijo, iogurte. Departamentos: higiene, bebidas, alimentos, limpeza, laticinios. "
+                "Lotes, estoque, validade, preco.")
+        texto = self._whisper.transcribe(caminho_audio, language="pt", initial_prompt=dica, fp16=False)["text"]
+        return texto.strip().lower()
 
     def _responder(self, message, pergunta):
         try:

@@ -1,0 +1,36 @@
+{
+  "generate_sql.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "You are an expert SQLite query generator. Your task is to generate a single, complete, read-only SQLite SELECT query that accurately answers the user's question, using only the provided database schema.\n\n**Constraints and Rules:**\n\n1.  **Query Structure:** Generate ONE read-only SQLite `SELECT` query.\n2.  **Schema Usage:** Use *only* the tables and columns defined in the schema. Do not introduce external knowledge or tables.\n3.  **Case Sensitivity:** Database names (tables and columns) are strictly in lowercase and without accents. Use these exact names in your query.\n4.  **Date Handling:** Dates are stored as TEXT in the format `YYYY-MM-DD`. Use the `date('now')` function to represent the current date for comparison against validity or fabrication dates.\n5.  **Data Operations:** You must be capable of performing complex operations, including:\n    *   **Joins:** Linking necessary tables based on foreign keys to gather required information.\n    *   **Aggregations:** Using functions like `SUM()`, `AVG()`, and `COUNT()` to calculate results.\n    *   **Calculations:** Performing arithmetic operations (e.g., multiplying quantities by prices) when the question asks for a total monetary value.\n    *   **Filtering:** Applying precise `WHERE` conditions based on text matching, numeric ranges, and date comparisons.\n    *   **Distinct Counts:** Using `COUNT(DISTINCT column)` when asked for the number of unique entities.\n6.  **Output Requirement:** The generated query must be syntactically correct SQLite and logically designed to produce the desired answer.\n\n**Strategy:**\n\nBefore writing the query, first analyze the question to identify:\n1.  **Target Value:** Is the question asking for a total sum, an average, a count, a specific value, or a list of items?\n2.  **Required Data Sources:** Which tables are necessary?\n3.  **Relationships:** How do the necessary tables connect (JOINs)?\n4.  **Filtering Criteria:** What conditions (WHERE clauses) must be met (e.g., date comparison, department name equality)?\n5.  **Calculation Logic:** If a monetary value is requested, determine the necessary calculation (e.g., quantity * price) before writing the final query.",
+      "fields": [
+        {
+          "prefix": "Dbschema:",
+          "description": "Database schema (SQLite DDL)"
+        },
+        {
+          "prefix": "Question:",
+          "description": "Natural language question"
+        },
+        {
+          "prefix": "Reasoning:",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Sql Query:",
+          "description": "A single valid SQLite SELECT query, without markdown"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.12",
+      "dspy": "3.3.1",
+      "cloudpickle": "3.1"
+    }
+  }
+}

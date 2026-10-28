@@ -13,7 +13,7 @@ from server import autorizador_somente_leitura
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:8000").rstrip("/")
-MODO_PADRAO = os.environ.get("GERADOR", "rlm")
+MODO_PADRAO = os.environ.get("GERADOR", "cot")
 
 
 def criar_lm():
@@ -212,6 +212,30 @@ DATASET = [
 ]
 
 
+# Perguntas mais dificeis (DISTINCT, varios lotes, HAVING) usadas so no treino do GEPA:
+# o CoT acerta todo o treino original, e sem erros o GEPA nao tem o que corrigir.
+TREINO_EXTRA = [
+    _exemplo("quais departamentos tem algum produto com lote vencido?",
+             f"SELECT DISTINCT d.nome {JOIN_EST} WHERE e.data_validade < date('now')"),
+    _exemplo("quantos produtos diferentes tem lote vencido?",
+             "SELECT COUNT(DISTINCT produto_id) FROM estoque WHERE data_validade < date('now')"),
+    _exemplo("liste os lotes vencidos e o nome do produto de cada um",
+             f"SELECT e.lote, p.nome {JOIN_EST} WHERE e.data_validade < date('now')"),
+    _exemplo("quantas unidades de laticinios estao vencidas?",
+             f"SELECT SUM(e.quantidade) {JOIN_EST} WHERE d.nome = 'laticinios' AND e.data_validade < date('now')"),
+    _exemplo("qual o valor total em reais dos lotes vencidos?",
+             "SELECT SUM(e.quantidade * p.preco) FROM estoque e JOIN produtos p ON e.produto_id = p.id "
+             "WHERE e.data_validade < date('now')"),
+    _exemplo("quais departamentos tem preco medio acima de 10 reais?",
+             f"SELECT d.nome {JOIN_PROD} GROUP BY d.nome HAVING AVG(p.preco) > 10"),
+    _exemplo("qual produto tem mais unidades em estoque somando todos os lotes?",
+             "SELECT p.nome FROM estoque e JOIN produtos p ON e.produto_id = p.id "
+             "GROUP BY p.nome ORDER BY SUM(e.quantidade) DESC LIMIT 1"),
+    _exemplo("quantos departamentos tem pelo menos um lote vencido?",
+             f"SELECT COUNT(DISTINCT d.id) {JOIN_EST} WHERE e.data_validade < date('now')"),
+]
+
+
 def dividir_dataset(dataset=DATASET, semente=0):
     exemplos = list(dataset)
     random.Random(semente).shuffle(exemplos)
@@ -282,7 +306,7 @@ def avaliar(generator, dataset, nome="avaliacao", salvar=True):
     return taxa
 
 
-def otimizar(modo=MODO_PADRAO):
+def otimizar(modo=MODO_PADRAO, orcamento=None, continuar=False, lote=3):
     task_lm = criar_lm()
     dspy.configure(lm=task_lm)
 
@@ -294,15 +318,19 @@ def otimizar(modo=MODO_PADRAO):
     )
 
     trainset, valset, testset = dividir_dataset()
-    generator = ReliableSQLGenerator(modo)
+    trainset = trainset + TREINO_EXTRA
+    # continuar=True parte do programa ja otimizado (rodadas sucessivas de GEPA)
+    generator = carregar_generator(modo, usar_otimizado=continuar)
 
     print(f"=== [{modo}] Antes da otimizacao (conjunto de teste) ===")
-    taxa_antes = avaliar(generator, testset, nome=f"avaliacao_{modo}_base")
+    taxa_antes = avaliar(generator, testset, nome=f"avaliacao_{modo}_{'antes_continuar' if continuar else 'base'}")
 
     otimizador = dspy.GEPA(
         metric=resultado_correto,
-        auto="light",
+        # orcamento = numero maximo de execucoes da metrica (bom para PCs lentos); sem ele, auto="light"
+        **({"max_metric_calls": orcamento, "use_merge": False} if orcamento else {"auto": "light"}),
         reflection_lm=reflection_lm,
+        reflection_minibatch_size=lote,
         num_threads=1,
         track_stats=True,
         log_dir=os.path.join(BASE_DIR, f"gepa_logs_{modo}"),
@@ -388,17 +416,23 @@ class BotTelegram:
 def main():
     parser = argparse.ArgumentParser(description="Agente text-to-SQL (Telegram + voz) sobre o server.py")
     parser.add_argument("--modo", choices=["rlm", "cot"], default=MODO_PADRAO,
-                        help="gerador de SQL: rlm (Recursive Language Model, padrao) ou cot (Chain of Thought)")
+                        help="gerador de SQL: cot (Chain of Thought, padrao e otimizado com GEPA) ou rlm (Recursive Language Model)")
     acao = parser.add_mutually_exclusive_group()
     acao.add_argument("--otimizar", action="store_true", help="roda o GEPA e salva o programa otimizado")
     acao.add_argument("--avaliar", action="store_true", help="mede a acuracia no conjunto de teste")
     acao.add_argument("--pergunta", help="responde uma pergunta no terminal, sem Telegram")
     parser.add_argument("--base", action="store_true", help="ignora o programa otimizado (com --avaliar/--pergunta)")
+    parser.add_argument("--orcamento", type=int,
+                        help="com --otimizar, limita o GEPA a N execucoes da metrica (ex.: 18 para uma rodada curta)")
+    parser.add_argument("--continuar", action="store_true",
+                        help="com --otimizar, parte do programa ja otimizado em vez do original")
+    parser.add_argument("--lote", type=int, default=3,
+                        help="com --otimizar, perguntas de treino por tentativa do GEPA (padrao 3)")
     parser.add_argument("--completo", action="store_true", help="com --avaliar, usa o dataset inteiro")
     args = parser.parse_args()
 
     if args.otimizar:
-        otimizar(args.modo)
+        otimizar(args.modo, args.orcamento, args.continuar, args.lote)
         return
 
     dspy.configure(lm=criar_lm())

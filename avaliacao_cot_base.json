@@ -1,8 +1,8 @@
 {
   "nome": "avaliacao_cot_base",
-  "acertos": 6,
+  "acertos": 5,
   "total": 6,
-  "taxa": 1.0,
+  "taxa": 0.8333333333333334,
   "detalhes": [
     {
       "pergunta": "qual a quantidade total de itens em estoque?",
@@ -36,8 +36,8 @@
       "pergunta": "quais produtos tem algum lote vencido?",
       "sql_gerada": "SELECT T1.nome\nFROM produtos AS T1\nINNER JOIN estoque AS T2\n  ON T1.id = T2.produto_id\nWHERE\n  T2.data_validade < date('now')",
       "sql_esperada": "SELECT DISTINCT p.nome FROM estoque e JOIN produtos p ON e.produto_id = p.id JOIN departamentos d ON p.departamento_id = d.id WHERE e.data_validade < date('now')",
-      "acertou": true,
-      "feedback": "Correto: a SQL retornou exatamente o resultado esperado."
+      "acertou": false,
+      "feedback": "Resultado errado. Pergunta: 'quais produtos tem algum lote vencido?'. SQL gerada: \"SELECT T1.nome\\nFROM produtos AS T1\\nINNER JOIN estoque AS T2\\n  ON T1.id = T2.produto_id\\nWHERE\\n  T2.data_validade < date('now')\" retornou [['agua'], ['arroz'], ['suco de laranja'], ['agua sanitaria'], ['leite']] ... (6 linhas), mas o esperado era [['agua'], ['agua sanitaria'], ['arroz'], ['leite'], ['suco de laranja']] (ex.: \"SELECT DISTINCT p.nome FROM estoque e JOIN produtos p ON e.produto_id = p.id JOIN departamentos d ON p.departamento_id = d.id WHERE e.data_validade < date('now')\"). Retorne somente as colunas pedidas; os nomes no banco estao em minusculo e sem acento."
     },
     {
       "pergunta": "qual a data de validade do lote L003?",

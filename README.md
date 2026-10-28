@@ -12,20 +12,56 @@ com o resultado da consulta.
 
 ## Como rodar
 
+São três processos ao mesmo tempo, cada um num terminal: a API do banco, o LLM e o bot.
+
+### Pré-requisitos
+
+- Python 3 e as dependências: `pip install -r requirements.txt`
+- `ffmpeg` instalado no sistema (só para mensagens de áudio no Telegram):
+  `sudo apt install ffmpeg` / `brew install ffmpeg` / `choco install ffmpeg`
+- O modelo **Gemma 4 E2B** (`gemma-4-E2B-it-IQ4_XS`, arquivo GGUF), o mesmo usado na otimização
+- Um token de bot do Telegram: no Telegram, fale com o **@BotFather**, mande `/newbot`, escolha um nome
+  e copie o token que ele devolve
+
+### 1. API + banco
+
 ```bash
-pip install -r requirements.txt
+python server.py                      # porta 8000; cria e popula o lojas.db na primeira execução
+```
 
-# 1. API + banco (cria e popula o lojas.db na primeira execução)
-python server.py                      # ou: uvicorn server:app --port 8000
+### 2. LLM local na porta 1337
 
-# 2. LLM local compatível com OpenAI em http://localhost:1337/v1
-#    (troque com LM_MODEL / LM_API_BASE / LM_API_KEY)
+O bot espera uma API compatível com OpenAI em `http://localhost:1337/v1`, com o modelo chamado
+`gemma-4-E2B-it-IQ4_XS`.
 
-# 3. Bot
-export TELEGRAM_BOT_TOKEN=...
+- **Jan:** baixe o Gemma 4 E2B pelo Jan e ligue o *Local API Server* (porta 1337 é o padrão).
+- **llama.cpp** (se o Jan não abrir, dá para usar o `llama-server` e o modelo que ele já baixou):
+
+  ```bash
+  llama-server -m caminho/para/model.gguf --alias gemma-4-E2B-it-IQ4_XS \
+    --host 127.0.0.1 --port 1337 -c 8192 --jinja
+  ```
+
+  No Linux com Jan via Flatpak, o modelo fica em
+  `~/.var/app/ai.jan.Jan/data/Jan/data/llamacpp/models/gemma-4-E2B-it-IQ4_XS/model.gguf` e o
+  `llama-server` em `~/.var/app/ai.jan.Jan/data/Jan/data/llamacpp/backends/<versao>/<backend>/build/bin/`
+  (rode com `LD_LIBRARY_PATH` apontando para essa pasta).
+
+Outro modelo, endereço ou chave: `LM_MODEL=openai/<nome>`, `LM_API_BASE`, `LM_API_KEY`. O programa
+otimizado continua sendo carregado, mas o resultado da avaliação pode mudar com outro modelo.
+
+Sem GPU, cada pergunta nova leva alguns minutos para ser respondida; perguntas repetidas voltam na hora
+(cache do DSPy).
+
+### 3. Bot
+
+O bot carrega `generator_otimizado_cot.json` automaticamente (aparece "Usando programa otimizado").
+
+```bash
+export TELEGRAM_BOT_TOKEN=...         # token do @BotFather
 python bot.py                         # Telegram, gerador Chain of Thought (ja otimizado com GEPA)
 python bot.py --modo rlm              # Telegram, gerador RLM (mais lento: varias chamadas ao LLM por pergunta)
-python bot.py --pergunta "quais lotes vencem nos proximos 30 dias?"
+python bot.py --pergunta "quais lotes vencem nos proximos 30 dias?"   # sem Telegram, responde no terminal
 ```
 
 ## Avaliação e otimização

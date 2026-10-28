@@ -13,7 +13,7 @@ from server import autorizador_somente_leitura
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:8000").rstrip("/")
-MODO_PADRAO = os.environ.get("GERADOR", "cot")
+MODO_PADRAO = os.environ.get("GERADOR", "rlm")
 
 
 def criar_lm():
@@ -97,13 +97,14 @@ class TextToSQL(dspy.Signature):
 
 
 class ReliableSQLGenerator(dspy.Module):
-    def __init__(self, modo=MODO_PADRAO):
+    def __init__(self, modo=MODO_PADRAO, rlm_iters=8):
         super().__init__()
         if modo not in ("rlm", "cot"):
             raise ValueError(f"modo invalido: {modo!r} (use 'rlm' ou 'cot')")
         self.modo = modo
         if modo == "rlm":
-            self.generate_sql = dspy.RLM(TextToSQL, max_iters=8, max_llm_calls=10, tools=[testar_sql])
+            self.generate_sql = dspy.RLM(TextToSQL, max_iters=rlm_iters, max_llm_calls=rlm_iters + 2,
+                                     tools=[testar_sql])
         else:
             self.generate_sql = dspy.ChainOfThought(TextToSQL)
 
@@ -119,8 +120,8 @@ class ReliableSQLGenerator(dspy.Module):
         return pred
 
 
-def carregar_generator(modo=MODO_PADRAO, usar_otimizado=True):
-    generator = ReliableSQLGenerator(modo)
+def carregar_generator(modo=MODO_PADRAO, usar_otimizado=True, rlm_iters=8):
+    generator = ReliableSQLGenerator(modo, rlm_iters)
     caminho = caminho_programa_otimizado(modo)
     if usar_otimizado and os.path.exists(caminho):
         generator.load(caminho)
@@ -416,7 +417,7 @@ class BotTelegram:
 def main():
     parser = argparse.ArgumentParser(description="Agente text-to-SQL (Telegram + voz) sobre o server.py")
     parser.add_argument("--modo", choices=["rlm", "cot"], default=MODO_PADRAO,
-                        help="gerador de SQL: cot (Chain of Thought, padrao e otimizado com GEPA) ou rlm (Recursive Language Model)")
+                        help="gerador de SQL: rlm (Recursive Language Model, padrao) ou cot (Chain of Thought, otimizado com GEPA)")
     acao = parser.add_mutually_exclusive_group()
     acao.add_argument("--otimizar", action="store_true", help="roda o GEPA e salva o programa otimizado")
     acao.add_argument("--avaliar", action="store_true", help="mede a acuracia no conjunto de teste")
@@ -426,6 +427,8 @@ def main():
                         help="com --otimizar, limita o GEPA a N execucoes da metrica (ex.: 18 para uma rodada curta)")
     parser.add_argument("--continuar", action="store_true",
                         help="com --otimizar, parte do programa ja otimizado em vez do original")
+    parser.add_argument("--rlm-iters", type=int, default=8,
+                        help="no modo rlm, maximo de rodadas por pergunta (menos = mais rapido em PC sem GPU)")
     parser.add_argument("--lote", type=int, default=3,
                         help="com --otimizar, perguntas de treino por tentativa do GEPA (padrao 3)")
     parser.add_argument("--completo", action="store_true", help="com --avaliar, usa o dataset inteiro")
@@ -436,7 +439,7 @@ def main():
         return
 
     dspy.configure(lm=criar_lm())
-    generator = carregar_generator(args.modo, usar_otimizado=not args.base)
+    generator = carregar_generator(args.modo, usar_otimizado=not args.base, rlm_iters=args.rlm_iters)
 
     if args.avaliar:
         dataset = DATASET if args.completo else dividir_dataset()[2]
